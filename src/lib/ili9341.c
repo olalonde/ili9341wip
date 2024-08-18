@@ -19,14 +19,43 @@
  *
  */
 
-#include <avr/pgmspace.h>
-#include <util/delay.h>
-#include <stdio.h>
+// #include <avr/pgmspace.h>
+// #include <util/delay.h>
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/logging/log.h>
 #include "font.h"
 #include "ili9341.h"
 
+#define LCD_NODE DT_PATH(lcd)  // Reference to /lcd@0 node
+
+LOG_MODULE_REGISTER(lcd_lib);
+
+static const struct gpio_dt_spec lcd_rst = GPIO_DT_SPEC_GET(LCD_NODE, rst_gpios);
+static const struct gpio_dt_spec lcd_cs = GPIO_DT_SPEC_GET(LCD_NODE, cs_gpios);
+static const struct gpio_dt_spec lcd_rs = GPIO_DT_SPEC_GET(LCD_NODE, rs_gpios);
+static const struct gpio_dt_spec lcd_wr = GPIO_DT_SPEC_GET(LCD_NODE, wr_gpios);
+static const struct gpio_dt_spec lcd_rd = GPIO_DT_SPEC_GET(LCD_NODE, rd_gpios);
+
+static const struct gpio_dt_spec lcd_data[8] = {
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 0),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 1),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 2),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 3),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 4),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 5),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 6),
+    GPIO_DT_SPEC_GET_BY_IDX(LCD_NODE, data_gpios, 7),
+};
+
+static inline uint8_t pgm_read_byte(const uint8_t *addr) {
+    return *addr;
+}
+
 /** @array Init command */
-const uint8_t INIT_ILI9341[] PROGMEM = {
+const uint8_t INIT_ILI9341[] = {
   // number of initializers
   12,
 
@@ -90,6 +119,7 @@ void ILI9341_Init (void)
   const uint8_t *commands = INIT_ILI9341;
   // number of commands
   unsigned short int no_of_commands = pgm_read_byte(commands++);
+  LOG_INF("no of commands = %i", no_of_commands);
   // arguments
   char no_of_arguments;
   // command
@@ -136,20 +166,31 @@ void ILI9341_Init (void)
  */
 void ILI9341_InitPorts (void)
 {
+  int ret;
   // set control pins as output
-  SETBIT(ILI9341_DDR_CONTROL, ILI9341_PIN_CS);
-  SETBIT(ILI9341_DDR_CONTROL, ILI9341_PIN_RS);
-  SETBIT(ILI9341_DDR_CONTROL, ILI9341_PIN_RD);
-  SETBIT(ILI9341_DDR_CONTROL, ILI9341_PIN_WR);
+  ret = gpio_pin_configure_dt(&lcd_cs, GPIO_OUTPUT_HIGH);
+  if (ret != 0) {
+    LOG_ERR("Error configuring CS pin. Error: %d", ret);
+  }
+  ret = gpio_pin_configure_dt(&lcd_rs, GPIO_OUTPUT_HIGH);
+  if (ret != 0) {
+    LOG_ERR("Error configuring RS pin. Error: %d", ret);
+  }
+  ret = gpio_pin_configure_dt(&lcd_rd, GPIO_OUTPUT_HIGH);
+  if (ret != 0) {
+    LOG_ERR("Error configuring RD pin. Error: %d", ret);
+  }
+  ret = gpio_pin_configure_dt(&lcd_wr, GPIO_OUTPUT_HIGH);
+  if (ret != 0) {
+    LOG_ERR("Error configuring WR pin. Error: %d", ret);
+  }
 
-  // set HIGH Level on all pins - IDLE MODE
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS); 
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS); 
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RD); 
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_WR);
-
-  // set all pins as output
-  ILI9341_DDR_DATA = 0xFF;
+  for (int i = 0; i < 8; i++) {
+    ret = gpio_pin_configure_dt(&lcd_data[i], GPIO_OUTPUT_LOW);
+    if (ret != 0) {
+      LOG_ERR("Error configuring data pin #%d. Error: %d", i, ret);
+    }
+  }
 }
 
 /**
@@ -162,16 +203,19 @@ void ILI9341_InitPorts (void)
 void ILI9341_HWReset (void)
 {
   // set RESET as Output
-  SETBIT(ILI9341_DDR_CONTROL, ILI9341_PIN_RST);
+  gpio_pin_configure_dt(&lcd_rst, GPIO_OUTPUT);
+  // SETBIT(ILI9341_DDR_CONTROL, ILI9341_PIN_RST);
 
   // RESET SEQUENCE
   // --------------------------------------------
   // set Reset LOW
-  CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RST);
+  gpio_pin_set_dt(&lcd_rst, 0);
+  // CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RST);
   // delay LOW > 10us
-  _delay_ms(10);
+  k_msleep(10);
   // set Reset HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RST);
+  gpio_pin_set_dt(&lcd_rst, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RST);
 /*
   // Adafruit 
   // --------------------------------------------
@@ -193,7 +237,22 @@ void ILI9341_HWReset (void)
   SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 */
   // delay HIGH > 120ms
-  _delay_ms(200);  
+  k_msleep(200);  
+}
+
+void write_bus(uint8_t data) {
+    for (int i = 0; i < 8; i++) {
+        uint8_t bit = (data >> i) & 0x1;
+        // LOG_INF("lcd bit #%i = %i", i, bit);
+        gpio_pin_set_dt(&lcd_data[i], bit);
+    }
+}
+
+void WR_IMPULSE(void) {
+  gpio_pin_set_dt(&lcd_wr, 0);
+  k_usleep(1);
+  gpio_pin_set_dt(&lcd_wr, 1);
+  k_usleep(1);
 }
 
 /**
@@ -206,9 +265,11 @@ void ILI9341_HWReset (void)
 void ILI9341_TransmitCmmd (uint8_t cmmd)
 {
   // D/C -> LOW
-  CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
+  gpio_pin_set_dt(&lcd_rs, 0);
+  // CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
   // enable chip select -> LOW
-  CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 0);
+  // CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 
   // Write data / command timing diagram
   // --------------------------------------------
@@ -218,15 +279,19 @@ void ILI9341_TransmitCmmd (uint8_t cmmd)
   //      WR:   \__/
 
   // set command on PORT
-  ILI9341_PORT_DATA = cmmd;
+  // ILI9341_PORT_DATA = cmmd;
+  write_bus(cmmd);
   // Write impulse
   WR_IMPULSE();
 
   // D/C -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
+  gpio_pin_set_dt(&lcd_rs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
   // disable chip select -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS); 
+  gpio_pin_set_dt(&lcd_cs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS); 
 }
+
 
 /**
  * @desc    LCD transmit 8 bits data
@@ -238,9 +303,11 @@ void ILI9341_TransmitCmmd (uint8_t cmmd)
 void ILI9341_Transmit8bitData (uint8_t data)
 {
   // D/C -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
+  gpio_pin_set_dt(&lcd_rs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
   // enable chip select -> LOW
-  CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 0);
+  // CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 
   // Write data / command timing diagram
   // --------------------------------------------
@@ -250,12 +317,14 @@ void ILI9341_Transmit8bitData (uint8_t data)
   //      WR:   \__/
 
   // set data on PORT
-  ILI9341_PORT_DATA = data;
+  write_bus(data);
+  // ILI9341_PORT_DATA = data;
   // Write impulse
   WR_IMPULSE();
 
   // disable chip select -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 }
 
 /**
@@ -268,9 +337,11 @@ void ILI9341_Transmit8bitData (uint8_t data)
 void ILI9341_Transmit16bitData (uint16_t data)
 {
   // D/C -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
+  gpio_pin_set_dt(&lcd_rs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
   // enable chip select -> LOW
-  CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 0);
+  // CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 
   // Write data timing diagram
   // --------------------------------------------
@@ -282,19 +353,21 @@ void ILI9341_Transmit16bitData (uint16_t data)
   // set byte data on PORT
   //   __
   // 0x0000
-  ILI9341_PORT_DATA = (uint8_t) (data >> 8);
+  // ILI9341_PORT_DATA = (uint8_t) (data >> 8);
+  write_bus((uint8_t) (data >> 8));
   // Write impulse
   WR_IMPULSE();
 
   // set byte data on PORT
   //     __
   // 0x0000
-  ILI9341_PORT_DATA = (uint8_t) data;
+  write_bus((uint8_t) data);
   // Write impulse
   WR_IMPULSE();
 
   // disable chip select -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 }
 
 /**
@@ -307,9 +380,11 @@ void ILI9341_Transmit16bitData (uint16_t data)
 void ILI9341_Transmit32bitData (uint32_t data)
 {
   // D/C -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
+  gpio_pin_set_dt(&lcd_rs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_RS);
   // enable chip select -> LOW
-  CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 0);
+  // CLRBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 
   // Write data timing diagram
   // --------------------------------------------
@@ -321,33 +396,38 @@ void ILI9341_Transmit32bitData (uint32_t data)
   // set byte data on PORT
   //   __
   // 0x00000000
-  ILI9341_PORT_DATA = (uint8_t) (data >> 24);
+  // ILI9341_PORT_DATA = (uint8_t) (data >> 24);
+  write_bus((uint8_t) (data >> 24));
   // Write impulse
   WR_IMPULSE();
 
   // set byte data on PORT
   //     __
   // 0x00000000
-  ILI9341_PORT_DATA = (uint8_t) (data >> 16);
+  // ILI9341_PORT_DATA = (uint8_t) (data >> 16);
+  write_bus((uint8_t) (data >> 16));
   // Write impulse
   WR_IMPULSE();
 
   // set byte data on PORT
   //       __
   // 0x00000000
-  ILI9341_PORT_DATA = (uint8_t) (data >> 8);
+  // ILI9341_PORT_DATA = (uint8_t) (data >> 8);
+  write_bus((uint8_t) (data >> 8));
   // Write impulse
   WR_IMPULSE();
 
   // set byte data on PORT
   //         __
   // 0x00000000
-  ILI9341_PORT_DATA = (uint8_t) data;
+  // ILI9341_PORT_DATA = (uint8_t) data;
+  write_bus((uint8_t) data);
   // Write impulse
   WR_IMPULSE();
 
   // disable chip select -> HIGH
-  SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
+  gpio_pin_set_dt(&lcd_cs, 1);
+  // SETBIT(ILI9341_PORT_CONTROL, ILI9341_PIN_CS);
 }
 
 /**
@@ -854,6 +934,6 @@ void ILI9341_Delay (uint16_t time)
   // loop through real time
   while (time--) {
     // 1 s delay
-    _delay_ms(1);
+    k_msleep(1);
   }
 }

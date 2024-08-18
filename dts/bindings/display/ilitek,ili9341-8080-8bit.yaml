@@ -1,0 +1,34 @@
+description: Binding for the ILI9341-based LCD module (8080 8bit interface)
+
+compatible: "ilitek,ili9341-8080-8bit"
+
+properties:
+  rst-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO specifier for the LCD_RST reset pin
+
+  cs-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO specifier for the LCD_CS chip select pin
+
+  rs-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO specifier for the LCD_RS register select (data/command) pin
+
+  wr-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO specifier for the LCD_WR write signal pin
+
+  rd-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO specifier for the LCD_RD read signal pin
+
+  data-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO specifier array for the LCD data pins (8-bit bus)

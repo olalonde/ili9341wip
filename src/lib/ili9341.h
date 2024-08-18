@@ -19,7 +19,7 @@
  *
  */
 
-#include <avr/pgmspace.h>
+// #include <avr/pgmspace.h>
 
 #ifndef __ILI9341_H__
 #define __ILI9341_H__
@@ -28,18 +28,18 @@
   // 
   // Data
   // ---------------------------------------------------------------
-  #define ILI9341_PORT_DATA     PORTD
-  #define ILI9341_DDR_DATA      DDRD
-  #define ILI9341_PIN_DATA      PIND
+  // #define ILI9341_PORT_DATA     PORTD
+  // #define ILI9341_DDR_DATA      DDRD
+  // #define ILI9341_PIN_DATA      PIND
   // Control 
   // ---------------------------------------------------------------
-  #define ILI9341_DDR_CONTROL   DDRC
-  #define ILI9341_PORT_CONTROL  PORTC
-  #define ILI9341_PIN_RST       4
-  #define ILI9341_PIN_WR        1     // Write
-  #define ILI9341_PIN_RS        2     // Register Select -> D/C
-  #define ILI9341_PIN_CS        3     // Chip Select
-  #define ILI9341_PIN_RD        0     // Read
+  // #define ILI9341_DDR_CONTROL   DDRC
+  // #define ILI9341_PORT_CONTROL  PORTC
+  // #define ILI9341_PIN_RST       4
+  // #define ILI9341_PIN_WR        1     // Write
+  // #define ILI9341_PIN_RS        2     // Register Select -> D/C
+  // #define ILI9341_PIN_CS        3     // Chip Select
+  // #define ILI9341_PIN_RD        0     // Read
 
   // COMMAND DEFINITION
   // ---------------------------------------------------------------
@@ -123,9 +123,9 @@
   #define ILI9341_LCD_PRC       0xF7   // Pump ratio control register
 
   // set bit
-  #define SETBIT(REG, BIT)      { REG |= (1 << BIT); }
+  // #define SETBIT(REG, BIT)      { REG |= (1 << BIT); }
   // clear bit
-  #define CLRBIT(REG, BIT)      { REG &= ~(1 << BIT); }
+  // #define CLRBIT(REG, BIT)      { REG &= ~(1 << BIT); }
 
   // WR Impulse - condition
   // ---------------------------------------------------------------
@@ -135,7 +135,7 @@
   // for 16 MHz crystal T = 62.5ns =>
   // T pulse H -> Th = 31.25ns > twrh - condition satisfied
   // T pulse L -> Tl = 31.25ns > twrl - condition satisfied
-  #define WR_IMPULSE()          { ILI9341_PORT_CONTROL &= ~(1 << ILI9341_PIN_WR); ILI9341_PORT_CONTROL |= (1 << ILI9341_PIN_WR); }
+  // #define WR_IMPULSE()          { ILI9341_PORT_CONTROL &= ~(1 << ILI9341_PIN_WR); ILI9341_PORT_CONTROL |= (1 << ILI9341_PIN_WR); }
 
   // SOFTWARE DEFINITION
   // ---------------------------------------------------------------
